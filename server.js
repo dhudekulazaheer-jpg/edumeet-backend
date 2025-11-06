@@ -10,7 +10,7 @@ app.use(cors());
 
 const io = new Server(server, {
   cors: { 
-    origin: '*',
+    origin: 'https://edumeet-3ul6dm2ej-dhudekulazaheers-projects.vercel.app',
     methods: ["GET", "POST"]
   },
   transports: ['websocket', 'polling']
