@@ -18,6 +18,7 @@ const io = new Server(server, {
 
 const rooms = {};
 const attendanceByRoom = {}; // Track attendance by name per room
+const roomCreators = {}; // Track who created each room
 
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
@@ -25,19 +26,55 @@ io.on('connection', (socket) => {
   socket.on('join-room', ({ roomId, userName, name, role }) => {
     const finalName = userName || name || 'Anonymous';
     
-    if (!rooms[roomId]) rooms[roomId] = [];
+    // If room doesn't exist, this user is the creator/teacher
+    if (!rooms[roomId]) {
+      rooms[roomId] = [];
+      roomCreators[roomId] = socket.id;
+      socket.isTeacher = true;
+      console.log(`${finalName} created room ${roomId} as teacher`);
+    } else {
+      // Check if this socket is the creator
+      socket.isTeacher = (socket.id === roomCreators[roomId]) || (role === 'teacher');
+    }
+    
+    // **NEW: Check for duplicate users and remove old connection**
+    const duplicateSocketId = rooms[roomId].find(id => {
+      const existingSocket = io.sockets.sockets.get(id);
+      return existingSocket && existingSocket.name === finalName && id !== socket.id;
+    });
+    
+    if (duplicateSocketId) {
+      console.log(`Removing duplicate connection for ${finalName}`);
+      const oldSocket = io.sockets.sockets.get(duplicateSocketId);
+      if (oldSocket) {
+        oldSocket.emit('duplicate-connection', { message: 'You joined from another device' });
+        oldSocket.disconnect(true);
+      }
+      // Remove from rooms array
+      rooms[roomId] = rooms[roomId].filter(id => id !== duplicateSocketId);
+      
+      // Remove from attendance
+      if (attendanceByRoom[roomId]) {
+        attendanceByRoom[roomId] = attendanceByRoom[roomId].filter(n => n !== finalName);
+      }
+    }
+    
     rooms[roomId].push(socket.id);
     socket.join(roomId);
 
     // Attendance tracking
     attendanceByRoom[roomId] = attendanceByRoom[roomId] || [];
-    socket.name = finalName; // Save user's name on socket
+    socket.name = finalName;
     socket.roomId = roomId;
+    socket.role = socket.isTeacher ? 'teacher' : 'student';
     
     if (finalName && !attendanceByRoom[roomId].includes(finalName)) {
       attendanceByRoom[roomId].push(finalName);
     }
     io.to(roomId).emit('attendance-update', attendanceByRoom[roomId]);
+
+    // Send role back to client
+    socket.emit('role-assigned', { role: socket.role });
 
     // Inform the new user about existing participants
     const otherUsers = rooms[roomId].filter(id => id !== socket.id);
@@ -46,7 +83,7 @@ io.on('connection', (socket) => {
       userName: finalName
     })));
 
-    // Notify others that a new user joined - FIXED EVENT NAME
+    // Notify others that a new user joined
     socket.to(roomId).emit('user-joined', {
       callerId: socket.id,
       userName: finalName,
