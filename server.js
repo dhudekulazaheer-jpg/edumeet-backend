@@ -14,8 +14,12 @@ app.use(cors());
 
 const io = new Server(server, {
   cors: { 
-    origin: 'https://edumeet-3ul6dm2ej-dhudekulazaheers-projects.vercel.app',
-    methods: ["GET", "POST"]
+  origin: [
+    'https://edumeet-pi.vercel.app',
+    'https://edumeet-3ul6dm2ej-dhudekulazaheers-projects.vercel.app',
+    'http://localhost:3000'
+  ],
+
   },
   transports: ['websocket', 'polling']
 });
